@@ -1230,7 +1230,7 @@ class Engine extends Disposable with EventsEmittable<EngineEvent> {
       }
 
       if (recoverable) {
-        unawaited(handleReconnect(ClientDisconnectReason.reconnectRetry));
+        unawaited(handleReconnect(ClientDisconnectReason.reconnectRetry, reconnectReason: reconnectReason));
       } else {
         logger.fine('attemptReconnect: disconnecting...');
         // clean up before emitting, room's EngineDisconnectedEvent handler

@@ -21,6 +21,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:livekit_client/livekit_client.dart';
 import 'package:livekit_client/src/proto/livekit_models.pb.dart' as lk_models;
 import 'package:livekit_client/src/proto/livekit_rtc.pb.dart' as lk_rtc;
+import 'package:livekit_client/src/support/websocket.dart';
 import 'package:livekit_client/src/types/internal.dart';
 import '../mock/e2e_container.dart';
 import '../mock/peerconnection_mock.dart';
@@ -106,6 +107,27 @@ void main() {
 
       expect(offers, hasLength(1));
       expect(container.engine.publisher!.restartingIce, isTrue);
+    });
+  });
+
+  group('reconnect reason', () {
+    /// The reason sent by the resume that follows a refused one.
+    Future<String?> retriedReason(Future<void> Function() lose) async {
+      ws.connectError = WebSocketException('refused');
+      await lose();
+      await container.room.events.waitFor<RoomAttemptReconnectEvent>(
+        duration: const Duration(seconds: 5),
+        filter: (event) => event.attempt == 2,
+      );
+      final previousHandlers = ws.handlers;
+      ws.connectError = null;
+      await until(() => !identical(ws.handlers, previousHandlers));
+      return ws.uri!.queryParameters['reconnect_reason'];
+    }
+
+    test('is kept by a retry', () async {
+      final reason = await retriedReason(() async => ws.onDispose());
+      expect(reason, '${lk_models.ReconnectReason.RR_SIGNAL_DISCONNECTED.value}');
     });
   });
 }

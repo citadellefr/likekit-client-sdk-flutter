@@ -1,0 +1,1 @@
+patch type="fixed" "A retried resume keeps the reconnect reason of the first attempt instead of sending none"
