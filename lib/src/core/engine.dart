@@ -1289,7 +1289,11 @@ class Engine extends Disposable with EventsEmittable<EngineEvent> {
 
     logger.fine('resumeConnection: reason: ${reason.name}');
 
-    if (_hasPublished) {
+    // A signal connection lost and back leaves connected media as it was:
+    // restarting ICE then would only freeze it. ICE is restarted when media
+    // is down, or when asked to move to another candidate pair.
+    if (_hasPublished &&
+        (reconnectReason == lk_models.ReconnectReason.RR_SWITCH_CANDIDATE || !await _mediaConnected())) {
       logger.fine('resumeConnection: negotiating publisher...');
       await publisher!.createAndSendOffer(
         const RTCOfferOptions(

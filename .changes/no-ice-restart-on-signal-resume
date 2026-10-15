@@ -1,0 +1,1 @@
+patch type="fixed" "A resume caused by a lost signal connection no longer restarts publisher ICE while the peer connections are connected, which froze video for seconds after each resume"
