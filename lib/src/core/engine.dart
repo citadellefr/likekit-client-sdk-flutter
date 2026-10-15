@@ -1147,6 +1147,14 @@ class Engine extends Disposable with EventsEmittable<EngineEvent> {
     });
   }
 
+  Future<bool> _mediaConnected() async {
+    for (final transport in [primary, if (_hasPublished) publisher]) {
+      final state = await transport?.pc.getConnectionState();
+      if (state == null || !state.isConnected()) return false;
+    }
+    return true;
+  }
+
   @internal
   Future<void> attemptReconnect(
     ClientDisconnectReason reason, {
@@ -1207,9 +1215,11 @@ class Engine extends Disposable with EventsEmittable<EngineEvent> {
       _reconnectAttempts = _reconnectAttempts + 1;
       logger.fine('attemptReconnect: ${fullReconnect ? 'full reconnect' : 'resume'} failed: $e');
       bool recoverable = true;
-      if (fullReconnect || e is WebSocketException || e is MediaConnectException) {
+      if (fullReconnect || e is MediaConnectException || (e is WebSocketException && !await _mediaConnected())) {
         // a failed full reconnect stays a full reconnect; a resume that failed
-        // at the transport or media layer cannot be resumed again
+        // at the media layer cannot be resumed again. A signal server that
+        // cannot be reached says nothing about the media, which may still
+        // flow: tearing connected peer connections down would cut it.
         fullReconnectOnNext = true;
       }
 

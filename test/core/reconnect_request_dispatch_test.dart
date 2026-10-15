@@ -30,10 +30,12 @@ library;
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart' show RTCPeerConnectionState;
 
 import 'package:livekit_client/livekit_client.dart';
 import 'package:livekit_client/src/proto/livekit_models.pb.dart' as lk_models;
 import 'package:livekit_client/src/proto/livekit_rtc.pb.dart' as lk_rtc;
+import 'package:livekit_client/src/support/websocket.dart';
 import 'package:livekit_client/src/types/internal.dart';
 import '../mock/e2e_container.dart';
 import '../mock/peerconnection_mock.dart';
@@ -257,5 +259,34 @@ void main() {
 
     expect(container.engine.fullReconnectOnNext, isFalse);
     expect(container.engine.isFullReconnectInProgress, isFalse);
+  });
+
+  group('a signal server that cannot be reached', () {
+    /// Refuses the signal connection until the first resume has failed, then
+    /// returns the URI of the next socket.
+    Future<Uri> refuseOnce(void Function() lose) async {
+      final previousHandlers = ws.handlers;
+      ws.connectError = WebSocketException('refused');
+      lose();
+      await room.events.waitFor<RoomAttemptReconnectEvent>(
+        duration: const Duration(seconds: 5),
+        filter: (event) => event.attempt == 2,
+      );
+      ws.connectError = null;
+      return awaitNewSocket(previousHandlers);
+    }
+
+    test('leaves connected media alone and resumes again', () async {
+      final uri = await refuseOnce(ws.onDispose);
+      expect(uri.queryParameters['reconnect'], '1');
+    });
+
+    test('re-joins when media is down too', () async {
+      final uri = await refuseOnce(() {
+        (container.engine.subscriber!.pc as MockPeerConnection).connectionState =
+            RTCPeerConnectionState.RTCPeerConnectionStateDisconnected;
+      });
+      expect(uri.queryParameters['reconnect'], isNull);
+    });
   });
 }

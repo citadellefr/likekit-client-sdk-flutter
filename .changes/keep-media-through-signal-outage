@@ -1,0 +1,1 @@
+patch type="fixed" "A resume that cannot reach the signal server no longer turns into a full reconnect while the peer connections are still connected, so media keeps flowing through a signal outage"
