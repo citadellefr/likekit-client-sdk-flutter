@@ -1,0 +1,1 @@
+patch type="fixed" "A resume after a signal loss reports `RR_SUBSCRIBER_FAILED` when the subscriber is no longer connected or the device changed networks, and restarts publisher ICE after a change of network"

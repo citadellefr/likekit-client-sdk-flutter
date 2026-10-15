@@ -177,6 +177,9 @@ class Engine extends Disposable with EventsEmittable<EngineEvent> {
   final TTLMap<String, int> _reliableReceivedState = TTLMap<String, int>(30000);
   bool _isReconnecting = false;
 
+  // the device changed networks since the connection was lost
+  bool _networkChanged = false;
+
   Completer<void>? _publisherConnectionCompleter;
 
   String? _reliableParticipantKey(lk_models.DataPacket packet) {
@@ -1103,6 +1106,7 @@ class Engine extends Disposable with EventsEmittable<EngineEvent> {
 
     if (_reconnectAttempts == 0) {
       _reconnectStart = DateTime.timestamp();
+      _networkChanged = false;
     }
 
     if (_reconnectAttempts >= _reconnectCount) {
@@ -1269,6 +1273,15 @@ class Engine extends Disposable with EventsEmittable<EngineEvent> {
 
     events.emit(const EngineResumingEvent());
 
+    // A signal loss after which the device changed networks, or whose
+    // subscriber is no longer connected, is a failed subscriber: the server
+    // must not keep its side of a dead candidate pair.
+    final subscriberConnected = (await subscriber?.pc.getConnectionState())?.isConnected() ?? true;
+    final serverReason =
+        reconnectReason == lk_models.ReconnectReason.RR_SIGNAL_DISCONNECTED && (_networkChanged || !subscriberConnected)
+        ? lk_models.ReconnectReason.RR_SUBSCRIBER_FAILED
+        : reconnectReason;
+
     // wait for socket to connect rtc server
     await signalClient.connect(
       url!,
@@ -1276,7 +1289,7 @@ class Engine extends Disposable with EventsEmittable<EngineEvent> {
       connectOptions: connectOptions,
       roomOptions: roomOptions,
       reconnect: true,
-      reconnectReason: reconnectReason,
+      reconnectReason: serverReason,
     );
 
     await events.waitFor<SignalReconnectedEvent>(
@@ -1291,9 +1304,12 @@ class Engine extends Disposable with EventsEmittable<EngineEvent> {
 
     // A signal connection lost and back leaves connected media as it was:
     // restarting ICE then would only freeze it. ICE is restarted when media
-    // is down, or when asked to move to another candidate pair.
+    // is down, after a change of network, or when asked to move to another
+    // candidate pair.
     if (_hasPublished &&
-        (reconnectReason == lk_models.ReconnectReason.RR_SWITCH_CANDIDATE || !await _mediaConnected())) {
+        (reconnectReason == lk_models.ReconnectReason.RR_SWITCH_CANDIDATE ||
+            _networkChanged ||
+            !await _mediaConnected())) {
       logger.fine('resumeConnection: negotiating publisher...');
       await publisher!.createAndSendOffer(
         const RTCOfferOptions(
@@ -1442,6 +1458,9 @@ class Engine extends Disposable with EventsEmittable<EngineEvent> {
   });
 
   void _setUpSignalListeners() => _signalListener
+    ..on<SignalConnectivityChangedEvent>((_) {
+      if (_isReconnecting) _networkChanged = true;
+    })
     ..on<SignalJoinResponseEvent>((event) async {
       // create peer connections
       _subscriberPrimary = event.response.subscriberPrimary;

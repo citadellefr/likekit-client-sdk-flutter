@@ -15,10 +15,12 @@
 @Timeout(Duration(seconds: 10))
 library;
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 
 import 'package:livekit_client/livekit_client.dart';
+import 'package:livekit_client/src/internal/events.dart';
 import 'package:livekit_client/src/proto/livekit_models.pb.dart' as lk_models;
 import 'package:livekit_client/src/proto/livekit_rtc.pb.dart' as lk_rtc;
 import 'package:livekit_client/src/support/websocket.dart';
@@ -111,14 +113,16 @@ void main() {
   });
 
   group('reconnect reason', () {
-    /// The reason sent by the resume that follows a refused one.
-    Future<String?> retriedReason(Future<void> Function() lose) async {
+    /// The reason sent by the resume that follows a refused one; [meanwhile]
+    /// runs between the two.
+    Future<String?> retriedReason(Future<void> Function() lose, {void Function()? meanwhile}) async {
       ws.connectError = WebSocketException('refused');
       await lose();
       await container.room.events.waitFor<RoomAttemptReconnectEvent>(
         duration: const Duration(seconds: 5),
         filter: (event) => event.attempt == 2,
       );
+      meanwhile?.call();
       final previousHandlers = ws.handlers;
       ws.connectError = null;
       await until(() => !identical(ws.handlers, previousHandlers));
@@ -128,6 +132,36 @@ void main() {
     test('is kept by a retry', () async {
       final reason = await retriedReason(() async => ws.onDispose());
       expect(reason, '${lk_models.ReconnectReason.RR_SIGNAL_DISCONNECTED.value}');
+    });
+
+    test('is RR_SUBSCRIBER_FAILED for a signal loss with the subscriber down', () async {
+      (container.engine.subscriber!.pc as MockPeerConnection).connectionState =
+          rtc.RTCPeerConnectionState.RTCPeerConnectionStateConnecting;
+      final previousHandlers = ws.handlers;
+      ws.onDispose();
+      await until(() => !identical(ws.handlers, previousHandlers));
+
+      expect(ws.uri!.queryParameters['reconnect_reason'], '${lk_models.ReconnectReason.RR_SUBSCRIBER_FAILED.value}');
+    });
+
+    test('is RR_SUBSCRIBER_FAILED after a change of network, which restarts publisher ICE too', () async {
+      await publish();
+      final offers = publisherOffers();
+
+      final reason = await retriedReason(
+        () async => ws.onDispose(),
+        meanwhile: () => container.client.events.emit(
+          const SignalConnectivityChangedEvent(
+            oldState: [ConnectivityResult.wifi],
+            state: [ConnectivityResult.mobile],
+          ),
+        ),
+      );
+      expect(reason, '${lk_models.ReconnectReason.RR_SUBSCRIBER_FAILED.value}');
+
+      ws.onData(lk_rtc.SignalResponse(reconnect: lk_rtc.ReconnectResponse()).writeToBuffer());
+      await container.room.events.waitFor<RoomReconnectedEvent>(duration: const Duration(seconds: 5));
+      expect(offers, hasLength(1));
     });
   });
 }
