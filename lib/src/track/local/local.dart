@@ -182,7 +182,11 @@ abstract class LocalTrack extends Track {
         mediaStream,
         mediaStreamTrack,
       ) {
-    mediaStreamTrack.onEnded = () {
+    _emitEndedOf(mediaStreamTrack);
+  }
+
+  void _emitEndedOf(rtc.MediaStreamTrack track) {
+    track.onEnded = () {
       logger.fine('MediaStreamTrack.onEnded()');
       events.emit(TrackEndedEvent(track: this));
     };
@@ -337,6 +341,7 @@ abstract class LocalTrack extends Track {
 
     // set new stream & track to this object
     updateMediaStreamAndTrack(newStream, newTrack);
+    _emitEndedOf(newTrack);
 
     if (processor != null) {
       await setProcessor(processor);

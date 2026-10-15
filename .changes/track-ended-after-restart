@@ -1,0 +1,1 @@
+patch type="fixed" "A local track restarted by `restartTrack()` (unmute with `stopAudioCaptureOnMute`, `setDeviceId`) emits `TrackEndedEvent` again when its device goes away"
