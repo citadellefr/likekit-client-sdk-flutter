@@ -1,0 +1,1 @@
+patch type="fixed" "Keep pinging the signal server after a resume, so a signal connection that stops answering after the first resume is detected again"

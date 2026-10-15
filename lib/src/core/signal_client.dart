@@ -391,6 +391,8 @@ class SignalClient extends Disposable with EventsEmittable<SignalEvent> {
         _resetPingTimeout();
         break;
       case lk_rtc.SignalResponse_Message.reconnect:
+        // cleanUp() stopped the pings before this socket was opened
+        _startPingInterval();
         events.emit(SignalReconnectResponseEvent(response: msg.reconnect));
         break;
       case lk_rtc.SignalResponse_Message.requestResponse:

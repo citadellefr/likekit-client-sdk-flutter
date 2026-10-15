@@ -84,6 +84,40 @@ void main() {
       connector.handlers?.onData!(joinResponse.writeToBuffer());
     });
   });
+
+  group('ping', () {
+    Future<void> join() async {
+      await client.connect(
+        exampleUri,
+        token,
+        connectOptions: connectOptions,
+        roomOptions: roomOptions,
+      );
+      connector.onData(
+        (joinResponse.deepCopy()
+              ..join.pingInterval = 1
+              ..join.pingTimeout = 1)
+            .writeToBuffer(),
+      );
+    }
+
+    Future<void> resume() async {
+      await client.connect(
+        exampleUri,
+        token,
+        connectOptions: connectOptions,
+        roomOptions: roomOptions,
+        reconnect: true,
+      );
+      connector.onData(lk_rtc.SignalResponse(reconnect: lk_rtc.ReconnectResponse()).writeToBuffer());
+    }
+
+    test('a missing pong is detected after a resume', () async {
+      await join();
+      await resume();
+      await client.events.waitFor<SignalDisconnectedEvent>(duration: const Duration(seconds: 3));
+    });
+  });
 }
 
 final lk_rtc.SignalResponse joinResponse = lk_rtc.SignalResponse(
